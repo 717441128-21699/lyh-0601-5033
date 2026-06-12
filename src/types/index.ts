@@ -74,6 +74,13 @@ export interface ExtractionRecord {
   createdAt: string;
 }
 
+export interface ValidationRecord {
+  step: 'format' | 'signature' | 'encryption';
+  passed: boolean;
+  message: string;
+  timestamp: string;
+}
+
 export interface BiddingDocument {
   id: string;
   projectId: string;
@@ -86,6 +93,8 @@ export interface BiddingDocument {
   type: '投标文件' | '评标报告' | '其他';
   signed?: boolean;
   archived?: boolean;
+  validationHistory: ValidationRecord[];
+  originalFailedDocId?: string;
 }
 
 export interface FailedDocument {
@@ -98,6 +107,7 @@ export interface FailedDocument {
   type: '投标文件' | '评标报告' | '其他';
   failedStep: 'format' | 'signature' | 'encryption';
   failedReason: string;
+  reuploadedToDocId?: string;
 }
 
 export interface Notification {

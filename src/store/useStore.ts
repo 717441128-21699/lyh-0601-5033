@@ -9,6 +9,7 @@ import type {
   FailedDocument,
   Enterprise,
   ExtractedExpert,
+  ValidationRecord,
 } from '../types';
 import {
   mockProjects,
@@ -59,8 +60,13 @@ interface AppState {
   addDocument: (doc: BiddingDocument) => void;
   addFailedDocument: (doc: FailedDocument) => void;
   clearFailedDocuments: () => void;
+  batchClearFailedDocuments: (ids: string[]) => void;
+  updateFailedDocument: (id: string, updates: Partial<FailedDocument>) => void;
   signDocument: (docId: string) => void;
   archiveDocument: (docId: string) => void;
+  batchArchiveDocuments: (ids: string[]) => void;
+  downloadDocument: (docId: string) => void;
+  batchDownloadDocuments: (ids: string[]) => void;
   addNotification: (message: string, type: NotificationItem['type']) => void;
   markNotificationRead: (id: string) => void;
   toggleSidebar: () => void;
@@ -345,6 +351,18 @@ export const useStore = create<AppState>()(
       clearFailedDocuments: () =>
         set(() => ({ failedDocuments: [] })),
 
+      batchClearFailedDocuments: (ids) =>
+        set((state) => ({
+          failedDocuments: state.failedDocuments.filter((d) => !ids.includes(d.id)),
+        })),
+
+      updateFailedDocument: (id, updates) =>
+        set((state) => ({
+          failedDocuments: state.failedDocuments.map((d) =>
+            d.id === id ? { ...d, ...updates } : d
+          ),
+        })),
+
       signDocument: (docId) =>
         set((state) => ({
           documents: state.documents.map((d) =>
@@ -358,6 +376,35 @@ export const useStore = create<AppState>()(
             d.id === docId ? { ...d, archived: true } : d
           ),
         })),
+
+      batchArchiveDocuments: (ids) =>
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            ids.includes(d.id) ? { ...d, archived: true } : d
+          ),
+        })),
+
+      downloadDocument: (docId) => {
+        const state = get();
+        const doc = state.documents.find((d) => d.id === docId);
+        if (doc) {
+          const blob = new Blob(['模拟文件内容'], { type: 'application/octet-stream' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = doc.fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
+      },
+
+      batchDownloadDocuments: (ids) => {
+        ids.forEach((id, index) => {
+          setTimeout(() => get().downloadDocument(id), index * 300);
+        });
+      },
 
       addNotification: (message, type) =>
         set((state) => ({
