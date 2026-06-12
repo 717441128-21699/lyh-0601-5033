@@ -83,13 +83,13 @@ export default function Scheduling() {
 
   const pendingProjects = useMemo(() => projects.filter((p) => p.status === '待开标'), [projects]);
 
-  const pendingProjectsWithoutPendingExtraction = useMemo(() => {
-    const projectIdsWithPendingExtraction = new Set(
+  const pendingProjectsWithoutApprovedExtraction = useMemo(() => {
+    const projectIdsWithActiveExtraction = new Set(
       extractionRecords
-        .filter((r) => r.approvalStatus === '待审批')
+        .filter((r) => r.approvalStatus === '待审批' || r.approvalStatus === '已通过')
         .map((r) => r.projectId)
     );
-    return pendingProjects.filter((p) => !projectIdsWithPendingExtraction.has(p.id));
+    return pendingProjects.filter((p) => !projectIdsWithActiveExtraction.has(p.id));
   }, [pendingProjects, extractionRecords]);
 
   const uniqueProfessions = useMemo(() => {
@@ -231,10 +231,10 @@ export default function Scheduling() {
     if (!extractedResult) return;
     const { record, selectedExperts } = extractedResult;
     addExtractionRecord(record, selectedExperts.map((e) => e.id));
-    setSubmittedProjectIds((prev) => new Set(prev).add(record.projectId));
     setExtractedResult(null);
     setSelectedProjectId('');
     addNotification('抽取结果已提交审批', 'success');
+    navigate('/approval');
   };
 
   const extractedExperts = useMemo(() => {
@@ -250,10 +250,10 @@ export default function Scheduling() {
 
   const maxWeight = 10;
 
-  const selectedProjectHasPending = useMemo(() => {
+  const selectedProjectHasActive = useMemo(() => {
     if (!selectedProjectId) return false;
     return extractionRecords.some(
-      (r) => r.projectId === selectedProjectId && r.approvalStatus === '待审批'
+      (r) => r.projectId === selectedProjectId && (r.approvalStatus === '待审批' || r.approvalStatus === '已通过')
     );
   }, [selectedProjectId, extractionRecords]);
 
@@ -389,11 +389,11 @@ export default function Scheduling() {
           <div className="bg-white rounded-xl shadow-sm p-5">
             <h2 className="text-lg font-semibold font-serif text-gray-800 mb-4">专家抽取</h2>
 
-            {selectedProjectHasPending && (
+            {selectedProjectHasActive && (
               <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <div className="flex items-center gap-2 text-amber-700">
                   <XCircle className="h-4 w-4" />
-                  <span className="text-sm font-medium">该项目有待审批的抽取结果，请先处理</span>
+                  <span className="text-sm font-medium">该项目已有待审批或已通过的抽取记录，无法重复抽取</span>
                 </div>
               </div>
             )}
@@ -408,10 +408,10 @@ export default function Scheduling() {
                     setExtractedResult(null);
                   }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={pendingProjectsWithoutPendingExtraction.length === 0}
+                  disabled={pendingProjectsWithoutApprovedExtraction.length === 0}
                 >
                   <option value="">请选择待开标项目</option>
-                  {pendingProjectsWithoutPendingExtraction.map((p) => (
+                  {pendingProjectsWithoutApprovedExtraction.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.projectCode} - {p.industry}
                     </option>
@@ -461,7 +461,7 @@ export default function Scheduling() {
 
               <button
                 onClick={handleExtract}
-                disabled={!selectedProjectId || selectedProjectHasPending}
+                disabled={!selectedProjectId || selectedProjectHasActive}
                 className="w-full px-4 py-2.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 开始抽取

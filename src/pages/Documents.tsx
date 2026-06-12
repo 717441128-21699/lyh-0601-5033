@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { BiddingDocument } from '@/types'
+import type { BiddingDocument, FailedDocument } from '@/types'
 
 function formatFileSize(bytes: number): string {
   if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB'
@@ -55,8 +55,8 @@ const FORMAT_NAMES: Record<string, string> = {
 }
 
 export default function Documents() {
-  const { documents, projects, addDocument, signDocument, archiveDocument, addNotification } = useStore()
-  const [activeTab, setActiveTab] = useState<'投标文件' | '评标报告'>('投标文件')
+  const { documents, failedDocuments, projects, addDocument, addFailedDocument, clearFailedDocuments, signDocument, archiveDocument, addNotification } = useStore()
+  const [activeTab, setActiveTab] = useState<'投标文件' | '评标报告' | '失败记录'>('投标文件')
   const [signingDocId, setSigningDocId] = useState<string | null>(null)
   const [isSigning, setIsSigning] = useState(false)
   const [signAnimDocId, setSignAnimDocId] = useState<string | null>(null)
@@ -87,7 +87,10 @@ export default function Documents() {
     return project?.industry ?? '-'
   }
 
-  const runValidation = async (fileName: string, fileType: string): Promise<{ signatureValid: boolean; encryptionValid: boolean } | null> => {
+  const runValidation = async (
+    fileName: string,
+    fileType: string
+  ): Promise<{ signatureValid: boolean; encryptionValid: boolean } | { failed: true; failedStep: 'format' | 'signature' | 'encryption'; failedReason: string }> => {
     const ext = fileName.split('.').pop()?.toLowerCase()
 
     setValidationState({ step: 'format', stepText: '正在校验文件格式...', progress: 25 })
@@ -95,14 +98,15 @@ export default function Documents() {
 
     if (!ext || !ALLOWED_FORMATS.includes(ext)) {
       const validFormats = ALLOWED_FORMATS.map((f) => `.${f.toUpperCase()}`).join('、')
+      const failedReason = `不支持的文件格式 "${ext?.toUpperCase() || '未知'}"，请上传 ${validFormats} 格式文件`
       setValidationState({
         step: 'failed',
         stepText: '格式校验失败',
-        errorMessage: `不支持的文件格式 "${ext?.toUpperCase() || '未知'}"，请上传 ${validFormats} 格式文件`,
+        errorMessage: failedReason,
         failedStep: 'format',
         progress: 25,
       })
-      return null
+      return { failed: true, failedStep: 'format', failedReason }
     }
 
     setValidationState({ step: 'signature', stepText: '正在验证数字签名...', progress: 55 })
@@ -110,14 +114,15 @@ export default function Documents() {
 
     const signatureValid = Math.random() > 0.25
     if (!signatureValid) {
+      const failedReason = '文件数字签名无效或已损坏，请确认文件来源合法'
       setValidationState({
         step: 'failed',
         stepText: '签名校验失败',
-        errorMessage: '文件数字签名无效或已损坏，请确认文件来源合法',
+        errorMessage: failedReason,
         failedStep: 'signature',
         progress: 55,
       })
-      return null
+      return { failed: true, failedStep: 'signature', failedReason }
     }
 
     setValidationState({ step: 'encryption', stepText: '正在验证加密完整性...', progress: 85 })
@@ -125,14 +130,15 @@ export default function Documents() {
 
     const encryptionValid = Math.random() > 0.2
     if (!encryptionValid) {
+      const failedReason = '文件加密完整性验证不通过，文件可能已被篡改'
       setValidationState({
         step: 'failed',
         stepText: '加密校验失败',
-        errorMessage: '文件加密完整性验证不通过，文件可能已被篡改',
+        errorMessage: failedReason,
         failedStep: 'encryption',
         progress: 85,
       })
-      return null
+      return { failed: true, failedStep: 'encryption', failedReason }
     }
 
     setValidationState({ step: 'success', stepText: '校验通过，文件已入库', progress: 100 })
@@ -174,24 +180,38 @@ export default function Documents() {
     setValidationState({ step: 'idle', stepText: '准备上传...', progress: 0 })
 
     runValidation(fileName, randomFileType).then((result) => {
-      if (result && uploadingFileInfo) {
-        const newDoc: BiddingDocument = {
-          id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          projectId: uploadingFileInfo.projectId,
-          fileName,
-          fileType: randomFileType,
-          fileSize: randomSize,
-          uploadTime: new Date().toISOString(),
-          signatureValid: result.signatureValid,
-          encryptionValid: result.encryptionValid,
-          type: activeTab,
-          signed: false,
-          archived: false,
+      if (uploadingFileInfo) {
+        if ('failed' in result) {
+          const failedDoc: FailedDocument = {
+            id: `fail-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            projectId: uploadingFileInfo.projectId,
+            fileName,
+            fileType: randomFileType,
+            fileSize: randomSize,
+            uploadTime: new Date().toISOString(),
+            type: activeTab === '失败记录' ? '投标文件' : (activeTab as '投标文件' | '评标报告'),
+            failedStep: result.failedStep,
+            failedReason: result.failedReason,
+          }
+          addFailedDocument(failedDoc)
+          addNotification(result.failedReason, 'danger')
+        } else {
+          const newDoc: BiddingDocument = {
+            id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            projectId: uploadingFileInfo.projectId,
+            fileName,
+            fileType: randomFileType,
+            fileSize: randomSize,
+            uploadTime: new Date().toISOString(),
+            signatureValid: result.signatureValid,
+            encryptionValid: result.encryptionValid,
+            type: activeTab === '失败记录' ? '投标文件' : (activeTab as '投标文件' | '评标报告'),
+            signed: false,
+            archived: false,
+          }
+          addDocument(newDoc)
+          addNotification(`文件 "${fileName}" 上传成功并已归档`, 'success')
         }
-        addDocument(newDoc)
-        addNotification(`文件 "${fileName}" 上传成功并已归档`, 'success')
-      } else {
-        addNotification(validationState.errorMessage || '文件校验失败', 'danger')
       }
     })
   }
@@ -237,18 +257,23 @@ export default function Documents() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900 font-serif">文档管理</h1>
         <div className="mt-4 flex gap-1 rounded-lg bg-gray-100 p-1 w-fit">
-          {(['投标文件', '评标报告'] as const).map((tab) => (
+          {(['投标文件', '评标报告', '失败记录'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={cn(
-                'rounded-md px-4 py-2 text-sm font-medium transition-all',
+                'rounded-md px-4 py-2 text-sm font-medium transition-all relative',
                 activeTab === tab
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
               )}
             >
               {tab}
+              {tab === '失败记录' && failedDocuments.length > 0 && (
+                <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                  {failedDocuments.length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -523,6 +548,72 @@ export default function Documents() {
               暂无评标报告
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === '失败记录' && (
+        <div className="space-y-4">
+          {failedDocuments.length > 0 && (
+            <div className="flex justify-end">
+              <button
+                onClick={() => {
+                  if (window.confirm('确认清空所有失败记录？')) {
+                    clearFailedDocuments()
+                    addNotification('已清空所有失败记录', 'success')
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                <Trash2 className="h-4 w-4" />
+                清空失败记录
+              </button>
+            </div>
+          )}
+
+          <div className="rounded-xl bg-white shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/50">
+                    <th className="px-4 py-3 text-left font-medium text-gray-500">文件名</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-500">所属项目</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-500">文件类型</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-500">文件大小</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-500">上传时间</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-500">失败环节</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-500">失败原因</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {failedDocuments.map((doc: FailedDocument) => (
+                    <tr key={doc.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-red-400 flex-shrink-0" />
+                          <span className="font-medium text-gray-900 truncate max-w-[200px]">{doc.fileName}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{getProjectCode(doc.projectId)}</td>
+                      <td className="px-4 py-3 text-gray-600">{doc.fileType.toUpperCase()}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">{formatFileSize(doc.fileSize)}</td>
+                      <td className="px-4 py-3 text-gray-600">{formatDate(doc.uploadTime)}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700">
+                          {doc.failedStep === 'format' ? '格式校验' : doc.failedStep === 'signature' ? '签名校验' : '加密校验'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 max-w-[250px] text-xs">{doc.failedReason}</td>
+                    </tr>
+                  ))}
+                  {failedDocuments.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-16 text-center text-gray-400">暂无失败记录</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 

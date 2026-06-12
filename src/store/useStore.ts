@@ -6,6 +6,7 @@ import type {
   EvaluationRoom,
   ExtractionRecord,
   BiddingDocument,
+  FailedDocument,
   Enterprise,
   ExtractedExpert,
 } from '../types';
@@ -37,6 +38,7 @@ interface AppState {
   evaluationRooms: EvaluationRoom[];
   extractionRecords: ExtractionRecord[];
   documents: BiddingDocument[];
+  failedDocuments: FailedDocument[];
   enterprises: Enterprise[];
   notifications: NotificationItem[];
   sidebarCollapsed: boolean;
@@ -54,6 +56,8 @@ interface AppState {
   updateRoomStatus: (roomId: string, status: EvaluationRoom['status'], projectId?: string) => void;
   updateRoomScheduleSlot: (roomId: string, slot: { date: string; startTime: string; endTime: string; projectId: string }) => void;
   addDocument: (doc: BiddingDocument) => void;
+  addFailedDocument: (doc: FailedDocument) => void;
+  clearFailedDocuments: () => void;
   signDocument: (docId: string) => void;
   archiveDocument: (docId: string) => void;
   addNotification: (message: string, type: NotificationItem['type']) => void;
@@ -106,6 +110,7 @@ export const useStore = create<AppState>()(
       evaluationRooms: mockEvaluationRooms,
       extractionRecords: mockExtractionRecords,
       documents: mockDocuments,
+      failedDocuments: [],
       enterprises: mockEnterprises,
       notifications: [],
       sidebarCollapsed: false,
@@ -282,6 +287,12 @@ export const useStore = create<AppState>()(
                   approvalStatus: '待审批' as const,
                 },
               ];
+              const supplementaryExpertIds = result.selectedExperts.map((e) => e.id);
+              state_.experts = (state_.experts || state.experts).map((e) =>
+                supplementaryExpertIds.includes(e.id)
+                  ? { ...e, status: '已抽取' as const }
+                  : e
+              );
               state_.notifications = [
                 {
                   id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -326,6 +337,12 @@ export const useStore = create<AppState>()(
 
       addDocument: (doc) =>
         set((state) => ({ documents: [...state.documents, doc] })),
+
+      addFailedDocument: (doc) =>
+        set((state) => ({ failedDocuments: [...state.failedDocuments, doc] })),
+
+      clearFailedDocuments: () =>
+        set(() => ({ failedDocuments: [] })),
 
       signDocument: (docId) =>
         set((state) => ({

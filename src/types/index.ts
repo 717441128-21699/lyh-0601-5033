@@ -88,6 +88,18 @@ export interface BiddingDocument {
   archived?: boolean;
 }
 
+export interface FailedDocument {
+  id: string;
+  projectId: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  uploadTime: string;
+  type: '投标文件' | '评标报告' | '其他';
+  failedStep: 'format' | 'signature' | 'encryption';
+  failedReason: string;
+}
+
 export interface Notification {
   id: string;
   message: string;

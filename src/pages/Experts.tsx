@@ -21,6 +21,9 @@ import {
   Award,
   Briefcase,
   Filter,
+  ThumbsUp,
+  ThumbsDown,
+  Bell,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -40,7 +43,7 @@ const PROFESSION_TAG_COLORS = [
   'bg-pink-50 text-pink-700',
 ];
 
-type TabKey = 'experts' | 'avoidance';
+type TabKey = 'experts' | 'tasks' | 'avoidance';
 
 interface AvoidanceRule {
   id: string;
@@ -65,7 +68,7 @@ function maskPhone(phone: string): string {
 }
 
 export default function Experts() {
-  const { experts, extractionRecords, projects } = useStore();
+  const { experts, extractionRecords, projects, evaluationRooms, expertConfirm, expertAvoid, addNotification } = useStore();
 
   const [activeTab, setActiveTab] = useState<TabKey>('experts');
   const [professionFilter, setProfessionFilter] = useState('全部');
@@ -122,6 +125,57 @@ export default function Experts() {
     return extractionRecords.filter((r) => r.experts.some((ee) => ee.expertId === expertId));
   };
 
+  const pendingConfirmTasks = useMemo(() => {
+    const tasks: Array<{
+      recordId: string;
+      expertId: string;
+      expertName: string;
+      projectId: string;
+      projectCode: string;
+      industry: string;
+      openBidTime: string;
+      roomName: string;
+      createdAt: string;
+    }> = [];
+    extractionRecords
+      .filter((r) => r.approvalStatus === '已通过')
+      .forEach((r) => {
+        const project = projects.find((p) => p.id === r.projectId);
+        if (!project) return;
+        r.experts.forEach((ee) => {
+          if (ee.response === '待确认') {
+            const expert = experts.find((e) => e.id === ee.expertId);
+            const room = evaluationRooms.find((r) => r.id === project.evaluationRoomId);
+            tasks.push({
+              recordId: r.id,
+              expertId: ee.expertId,
+              expertName: expert?.name || '未知',
+              projectId: r.projectId,
+              projectCode: project.projectCode,
+              industry: project.industry,
+              openBidTime: project.openBidTime,
+              roomName: room?.name || '未分配',
+              createdAt: r.createdAt,
+            });
+          }
+        });
+      });
+    return tasks;
+  }, [extractionRecords, projects, experts, evaluationRooms]);
+
+  // 模拟专家视角 - 查看单个专家的待确认任务
+  const [selectedExpertForTask, setSelectedExpertForTask] = useState<string>('');
+
+  const handleExpertConfirm = (expertId: string, recordId: string) => {
+    expertConfirm(expertId, recordId);
+    addNotification('专家已确认参加评审任务', 'success');
+  };
+
+  const handleExpertAvoid = (expertId: string, recordId: string) => {
+    expertAvoid(expertId, recordId);
+    addNotification('专家已申请回避，系统将自动补抽', 'warning');
+  };
+
   const toggleRule = (ruleId: string) => {
     setRules((prev) => prev.map((r) => (r.id === ruleId ? { ...r, enabled: !r.enabled } : r)));
   };
@@ -164,18 +218,23 @@ export default function Experts() {
       </div>
 
       <div className="flex items-center gap-1 border-b border-gray-200">
-        {(['experts', 'avoidance'] as TabKey[]).map((tab) => (
+        {(['experts', 'tasks', 'avoidance'] as TabKey[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={cn(
-              'px-5 py-3 text-sm font-medium transition-colors',
+              'px-5 py-3 text-sm font-medium transition-colors relative',
               activeTab === tab
                 ? 'text-primary-600 border-b-2 border-primary-600'
                 : 'text-gray-500 hover:text-gray-700'
             )}
           >
-            {tab === 'experts' ? '专家库' : '回避规则'}
+            {tab === 'experts' ? '专家库' : tab === 'tasks' ? '待确认任务' : '回避规则'}
+            {tab === 'tasks' && pendingConfirmTasks.length > 0 && (
+              <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                {pendingConfirmTasks.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -382,6 +441,104 @@ export default function Experts() {
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'tasks' && (
+        <div className="space-y-4">
+          <div className="rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 p-5 border border-blue-100">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500">
+                <Bell className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-gray-900">专家待确认任务</p>
+                <p className="text-sm text-gray-500">主任审批通过后，专家在此处确认参加或申请回避</p>
+              </div>
+              {pendingConfirmTasks.length > 0 && (
+                <span className="ml-auto inline-flex h-8 min-w-[32px] items-center justify-center rounded-full bg-red-500 px-2 text-sm font-bold text-white">
+                  {pendingConfirmTasks.length}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {pendingConfirmTasks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+              <Bell className="h-12 w-12 mb-3" />
+              <p className="text-sm">暂无待确认任务</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pendingConfirmTasks.map((task) => {
+                const expert = experts.find((e) => e.id === task.expertId);
+                return (
+                  <div
+                    key={`${task.recordId}-${task.expertId}`}
+                    className="rounded-xl bg-white p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-4 flex-1">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-white font-bold text-lg">
+                          {task.expertName.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="text-base font-semibold text-gray-900">{task.expertName}</span>
+                            <StatusBadge status={expert?.status || '可用'} size="sm" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-y-1.5 gap-x-6 text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400 w-16">项目编号</span>
+                              <span className="font-medium text-gray-900">{task.projectCode}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400 w-16">行业</span>
+                              <span className="text-gray-700">{task.industry}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400 w-16">开标时间</span>
+                              <span className="text-gray-700">
+                                {new Date(task.openBidTime).toLocaleString('zh-CN', {
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400 w-16">评标室</span>
+                              <span className="text-gray-700">{task.roomName}</span>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-xs text-gray-400">
+                            任务下发时间：{new Date(task.createdAt).toLocaleString('zh-CN')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-4">
+                        <button
+                          onClick={() => handleExpertConfirm(task.expertId, task.recordId)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-green-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-600 transition-colors shadow-sm"
+                        >
+                          <ThumbsUp className="h-4 w-4" />
+                          确认参加
+                        </button>
+                        <button
+                          onClick={() => handleExpertAvoid(task.expertId, task.recordId)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <ThumbsDown className="h-4 w-4" />
+                          申请回避
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
