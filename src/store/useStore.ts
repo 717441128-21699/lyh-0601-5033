@@ -26,6 +26,11 @@ interface NotificationItem {
   createdAt: string;
 }
 
+interface WeightedExtractionResult {
+  record: ExtractionRecord;
+  selectedExperts: Expert[];
+}
+
 interface AppState {
   projects: Project[];
   experts: Expert[];
@@ -40,13 +45,14 @@ interface AppState {
   addProject: (project: Project) => void;
   updateProjectStatus: (projectId: string, status: Project['status']) => void;
   updateProject: (projectId: string, updates: Partial<Project>) => void;
-  addExtractionRecord: (record: ExtractionRecord) => void;
+  addExtractionRecord: (record: ExtractionRecord, selectedExpertIds?: string[]) => void;
   approveExtraction: (recordId: string, approvedBy: string) => void;
   rejectExtraction: (recordId: string) => void;
   expertConfirm: (expertId: string, recordId: string) => void;
   expertAvoid: (expertId: string, recordId: string) => void;
   updateExpertStatus: (expertId: string, status: Expert['status']) => void;
   updateRoomStatus: (roomId: string, status: EvaluationRoom['status'], projectId?: string) => void;
+  updateRoomScheduleSlot: (roomId: string, slot: { date: string; startTime: string; endTime: string; projectId: string }) => void;
   addDocument: (doc: BiddingDocument) => void;
   signDocument: (docId: string) => void;
   archiveDocument: (docId: string) => void;
@@ -57,8 +63,9 @@ interface AppState {
     projectId: string,
     count: number,
     professionFilter?: string,
-    regionFilter?: string
-  ) => ExtractionRecord | null;
+    regionFilter?: string,
+    autoAdd?: boolean
+  ) => WeightedExtractionResult | null;
 }
 
 const CREDIT_WEIGHT: Record<Expert['creditRating'], number> = {
@@ -108,11 +115,42 @@ export const useStore = create<AppState>()(
         set((state) => ({ projects: [...state.projects, project] })),
 
       updateProjectStatus: (projectId, status) =>
-        set((state) => ({
-          projects: state.projects.map((p) =>
-            p.id === projectId ? { ...p, status } : p
-          ),
-        })),
+        set((state) => {
+          const now = new Date().toISOString();
+          return {
+            projects: state.projects.map((p) => {
+              if (p.id !== projectId) return p;
+
+              const updatedTimings = p.stageTimings.map((t) => {
+                if (t.stage === p.status && !t.endTime) {
+                  const startTime = new Date(t.startTime).getTime();
+                  const endTime = new Date(now).getTime();
+                  const duration = Math.floor((endTime - startTime) / 1000);
+                  return { ...t, endTime: now, duration };
+                }
+                return t;
+              });
+
+              const existingStage = updatedTimings.find((t) => t.stage === status);
+              if (!existingStage) {
+                updatedTimings.push({
+                  stage: status,
+                  startTime: now,
+                });
+              } else if (existingStage.endTime) {
+                const idx = updatedTimings.indexOf(existingStage);
+                updatedTimings[idx] = {
+                  ...existingStage,
+                  endTime: undefined,
+                  duration: undefined,
+                  startTime: now,
+                };
+              }
+
+              return { ...p, status, stageTimings: updatedTimings };
+            }),
+          };
+        }),
 
       updateProject: (projectId, updates) =>
         set((state) => ({
@@ -121,10 +159,20 @@ export const useStore = create<AppState>()(
           ),
         })),
 
-      addExtractionRecord: (record) =>
-        set((state) => ({
-          extractionRecords: [...state.extractionRecords, record],
-        })),
+      addExtractionRecord: (record, selectedExpertIds) =>
+        set((state) => {
+          const newState: Partial<AppState> = {
+            extractionRecords: [...state.extractionRecords, record],
+          };
+          if (selectedExpertIds) {
+            newState.experts = state.experts.map((e) =>
+              selectedExpertIds.includes(e.id)
+                ? { ...e, status: '已抽取' as const }
+                : e
+            );
+          }
+          return newState;
+        }),
 
       approveExtraction: (recordId, approvedBy) =>
         set((state) => ({
@@ -138,16 +186,43 @@ export const useStore = create<AppState>()(
                 }
               : r
           ),
+          experts: state.experts.map((e) => {
+            const relatedRecord = state.extractionRecords.find((r) => r.id === recordId);
+            if (relatedRecord?.experts.some((ee) => ee.expertId === e.id)) {
+              return { ...e, status: '已抽取' as const };
+            }
+            return e;
+          }),
+          notifications: [
+            {
+              id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              message: `抽取方案已通过审批，已推送通知至 ${state.extractionRecords.find((r) => r.id === recordId)?.experts.length || 0} 位专家`,
+              type: 'success',
+              read: false,
+              createdAt: new Date().toISOString(),
+            },
+            ...state.notifications,
+          ],
+          unreadCount: state.unreadCount + 1,
         })),
 
       rejectExtraction: (recordId) =>
-        set((state) => ({
-          extractionRecords: state.extractionRecords.map((r) =>
-            r.id === recordId
-              ? { ...r, approvalStatus: '已驳回' as const }
-              : r
-          ),
-        })),
+        set((state) => {
+          const record = state.extractionRecords.find((r) => r.id === recordId);
+          return {
+            extractionRecords: state.extractionRecords.map((r) =>
+              r.id === recordId
+                ? { ...r, approvalStatus: '已驳回' as const }
+                : r
+            ),
+            experts: state.experts.map((e) => {
+              if (record?.experts.some((ee) => ee.expertId === e.id) && e.status === '已抽取') {
+                return { ...e, status: '可用' as const };
+              }
+              return e;
+            }),
+          };
+        }),
 
       expertConfirm: (expertId, recordId) =>
         set((state) => ({
@@ -176,7 +251,10 @@ export const useStore = create<AppState>()(
 
       expertAvoid: (expertId, recordId) =>
         set((state) => {
-          const state_ = {
+          const record = state.extractionRecords.find((r) => r.id === recordId);
+          const project = state.projects.find((p) => p.id === record?.projectId);
+
+          const state_: Partial<AppState> = {
             extractionRecords: state.extractionRecords.map((r) =>
               r.id === recordId
                 ? {
@@ -194,23 +272,27 @@ export const useStore = create<AppState>()(
             ),
           };
 
-          const record = state.extractionRecords.find((r) => r.id === recordId);
-          if (record) {
-            const avoidedExperts = record.experts.filter(
-              (e) => e.response === '已回避' || e.expertId === expertId
-            );
-            const supplementaryCount = avoidedExperts.length;
-            if (supplementaryCount > 0) {
-              const supplementary = get().weightedRandomExtraction(
-                record.projectId,
-                supplementaryCount
-              );
-              if (supplementary) {
-                state_.extractionRecords = [
-                  ...state_.extractionRecords,
-                  supplementary,
-                ];
-              }
+          if (record && project) {
+            const result = get().weightedRandomExtraction(record.projectId, 1);
+            if (result) {
+              state_.extractionRecords = [
+                ...(state_.extractionRecords || state.extractionRecords),
+                {
+                  ...result.record,
+                  approvalStatus: '待审批' as const,
+                },
+              ];
+              state_.notifications = [
+                {
+                  id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                  message: `专家回避，已自动补抽1位专家，请审批`,
+                  type: 'warning',
+                  read: false,
+                  createdAt: new Date().toISOString(),
+                },
+                ...state.notifications,
+              ];
+              state_.unreadCount = state.unreadCount + 1;
             }
           }
 
@@ -229,6 +311,15 @@ export const useStore = create<AppState>()(
           evaluationRooms: state.evaluationRooms.map((r) =>
             r.id === roomId
               ? { ...r, status, currentProjectId: projectId }
+              : r
+          ),
+        })),
+
+      updateRoomScheduleSlot: (roomId, slot) =>
+        set((state) => ({
+          evaluationRooms: state.evaluationRooms.map((r) =>
+            r.id === roomId
+              ? { ...r, scheduleSlots: [...r.scheduleSlots, slot] }
               : r
           ),
         })),
@@ -280,7 +371,7 @@ export const useStore = create<AppState>()(
       toggleSidebar: () =>
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
-      weightedRandomExtraction: (projectId, count, professionFilter, regionFilter) => {
+      weightedRandomExtraction: (projectId, count, professionFilter, regionFilter, autoAdd = false) => {
         const state = get();
         const project = state.projects.find((p) => p.id === projectId);
         if (!project) return null;
@@ -332,16 +423,18 @@ export const useStore = create<AppState>()(
           createdAt: new Date().toISOString(),
         };
 
-        set((state) => ({
-          extractionRecords: [...state.extractionRecords, record],
-          experts: state.experts.map((e) =>
-            selected.some((s) => s.id === e.id)
-              ? { ...e, status: '已抽取' as const }
-              : e
-          ),
-        }));
+        if (autoAdd) {
+          set((state) => ({
+            extractionRecords: [...state.extractionRecords, record],
+            experts: state.experts.map((e) =>
+              selected.some((s) => s.id === e.id)
+                ? { ...e, status: '已抽取' as const }
+                : e
+            ),
+          }));
+        }
 
-        return record;
+        return { record, selectedExperts: selected };
       },
     }),
     {

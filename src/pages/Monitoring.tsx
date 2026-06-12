@@ -95,7 +95,7 @@ export default function Monitoring() {
 
   const handleSupplementaryExtract = (expertId: string, projectId: string) => {
     updateExpertStatus(expertId, '已回避');
-    weightedRandomExtraction(projectId, 1);
+    weightedRandomExtraction(projectId, 1, undefined, undefined, true);
     addNotification('专家迟到，已触发补抽并通知值班组长', 'danger');
   };
 

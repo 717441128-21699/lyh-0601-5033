@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
 import StatusBadge from '@/components/StatusBadge';
-import { CheckCircle, XCircle, Clock, Eye, CheckCheck } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Eye, CheckCheck, ThumbsUp, ThumbsDown } from 'lucide-react';
 
 const CREDIT_BADGE: Record<string, { bg: string; text: string }> = {
   'A+': { bg: 'bg-yellow-100', text: 'text-yellow-700' },
@@ -29,6 +29,8 @@ export default function Approval() {
     projects,
     approveExtraction,
     rejectExtraction,
+    expertConfirm,
+    expertAvoid,
     addNotification,
   } = useStore();
 
@@ -66,6 +68,16 @@ export default function Approval() {
       approveExtraction(r.id, '交易中心主任');
     });
     addNotification(`已批量通过${pendingRecords.length}个抽取方案`, 'success');
+  };
+
+  const handleExpertConfirm = (expertId: string, recordId: string) => {
+    expertConfirm(expertId, recordId);
+    addNotification('专家已确认参加', 'success');
+  };
+
+  const handleExpertAvoid = (expertId: string, recordId: string) => {
+    expertAvoid(expertId, recordId);
+    addNotification('专家已申请回避，系统自动补抽', 'warning');
   };
 
   const detailRecord = detailRecordId
@@ -334,6 +346,10 @@ export default function Approval() {
                     <th className="px-4 py-2.5 text-left font-medium text-gray-500">地区</th>
                     <th className="px-4 py-2.5 text-left font-medium text-gray-500">信用等级</th>
                     <th className="px-4 py-2.5 text-left font-medium text-gray-500">权重值</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-gray-500">响应状态</th>
+                    {detailRecord.approvalStatus === '已通过' && (
+                      <th className="px-4 py-2.5 text-left font-medium text-gray-500">操作</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -341,6 +357,7 @@ export default function Approval() {
                     const expert = getExpert(ee.expertId);
                     if (!expert) return null;
                     const credit = CREDIT_BADGE[expert.creditRating] ?? CREDIT_BADGE['B'];
+                    const canOperate = detailRecord.approvalStatus === '已通过' && ee.response === '待确认';
                     return (
                       <tr key={ee.expertId} className="hover:bg-gray-50/50">
                         <td className="px-4 py-2.5 font-medium text-gray-900">{expert.name}</td>
@@ -354,6 +371,33 @@ export default function Approval() {
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-gray-600">{ee.weight}</td>
+                        <td className="px-4 py-2.5">
+                          <StatusBadge status={ee.response} size="sm" />
+                        </td>
+                        {detailRecord.approvalStatus === '已通过' && (
+                          <td className="px-4 py-2.5">
+                            {canOperate ? (
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => handleExpertConfirm(ee.expertId, detailRecord.id)}
+                                  className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors"
+                                >
+                                  <ThumbsUp className="h-3 w-3" />
+                                  确认参加
+                                </button>
+                                <button
+                                  onClick={() => handleExpertAvoid(ee.expertId, detailRecord.id)}
+                                  className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100 transition-colors"
+                                >
+                                  <ThumbsDown className="h-3 w-3" />
+                                  申请回避
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400">--</span>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
