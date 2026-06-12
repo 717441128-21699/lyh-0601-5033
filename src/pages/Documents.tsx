@@ -169,49 +169,53 @@ export default function Documents() {
     const projectCode = project?.projectCode?.replace(/[^\w]/g, '') || 'PROJECT'
 
     const fileName = `${projectCode}-投标文件-${Date.now().toString().slice(-6)}.${randomFileType}`
-
-    setUploadingFileInfo({
+    const projectId = selectedProjectForUpload
+    // 使用局部变量保存，避免连续上传时state被覆盖导致数据串
+    const uploadInfo = {
       name: fileName,
       type: randomFileType,
       size: randomSize,
-      projectId: selectedProjectForUpload,
-    })
+      projectId,
+    }
+    // 确定文档类型：失败记录Tab默认投标文件，否则取当前Tab
+    const docType: '投标文件' | '评标报告' = activeTab === '评标报告' ? '评标报告' : '投标文件'
+
+    setUploadingFileInfo(uploadInfo)
     setShowUploadDialog(false)
     setValidationState({ step: 'idle', stepText: '准备上传...', progress: 0 })
 
     runValidation(fileName, randomFileType).then((result) => {
-      if (uploadingFileInfo) {
-        if ('failed' in result) {
-          const failedDoc: FailedDocument = {
-            id: `fail-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-            projectId: uploadingFileInfo.projectId,
-            fileName,
-            fileType: randomFileType,
-            fileSize: randomSize,
-            uploadTime: new Date().toISOString(),
-            type: activeTab === '失败记录' ? '投标文件' : (activeTab as '投标文件' | '评标报告'),
-            failedStep: result.failedStep,
-            failedReason: result.failedReason,
-          }
-          addFailedDocument(failedDoc)
-          addNotification(result.failedReason, 'danger')
-        } else {
-          const newDoc: BiddingDocument = {
-            id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-            projectId: uploadingFileInfo.projectId,
-            fileName,
-            fileType: randomFileType,
-            fileSize: randomSize,
-            uploadTime: new Date().toISOString(),
-            signatureValid: result.signatureValid,
-            encryptionValid: result.encryptionValid,
-            type: activeTab === '失败记录' ? '投标文件' : (activeTab as '投标文件' | '评标报告'),
-            signed: false,
-            archived: false,
-          }
-          addDocument(newDoc)
-          addNotification(`文件 "${fileName}" 上传成功并已归档`, 'success')
+      const now = new Date().toISOString()
+      if ('failed' in result) {
+        const failedDoc: FailedDocument = {
+          id: `fail-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          projectId: uploadInfo.projectId,
+          fileName: uploadInfo.name,
+          fileType: uploadInfo.type,
+          fileSize: uploadInfo.size,
+          uploadTime: now,
+          type: docType,
+          failedStep: result.failedStep,
+          failedReason: result.failedReason,
         }
+        addFailedDocument(failedDoc)
+        addNotification(result.failedReason, 'danger')
+      } else {
+        const newDoc: BiddingDocument = {
+          id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          projectId: uploadInfo.projectId,
+          fileName: uploadInfo.name,
+          fileType: uploadInfo.type,
+          fileSize: uploadInfo.size,
+          uploadTime: now,
+          signatureValid: result.signatureValid,
+          encryptionValid: result.encryptionValid,
+          type: docType,
+          signed: false,
+          archived: false,
+        }
+        addDocument(newDoc)
+        addNotification(`文件 "${uploadInfo.name}" 上传成功并已归档`, 'success')
       }
     })
   }

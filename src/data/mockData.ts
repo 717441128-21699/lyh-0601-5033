@@ -4,6 +4,7 @@ import type {
   EvaluationRoom,
   ExtractionRecord,
   BiddingDocument,
+  FailedDocument,
   Enterprise,
 } from '../types';
 
@@ -211,9 +212,7 @@ export const mockExtractionRecords: ExtractionRecord[] = [
 export const mockDocuments: BiddingDocument[] = [
   { id: 'doc-001', projectId: 'proj-001', fileName: '政务云平台投标文件-华为.pdf', fileType: 'pdf', fileSize: 5242880, uploadTime: '2026-06-10T14:30:00Z', signatureValid: true, encryptionValid: true, type: '投标文件', signed: true },
   { id: 'doc-002', projectId: 'proj-001', fileName: '政务云平台投标文件-中建三局.pdf', fileType: 'pdf', fileSize: 8388608, uploadTime: '2026-06-10T16:00:00Z', signatureValid: true, encryptionValid: true, type: '投标文件', signed: true },
-  { id: 'doc-003', projectId: 'proj-002', fileName: '综合楼建设项目投标文件-中建三局.pdf', fileType: 'pdf', fileSize: 8388608, uploadTime: '2026-06-08T16:00:00Z', signatureValid: true, encryptionValid: false, type: '投标文件', signed: true },
   { id: 'doc-004', projectId: 'proj-002', fileName: '综合楼建设项目投标文件-中建五局.pdf', fileType: 'pdf', fileSize: 6291456, uploadTime: '2026-06-09T10:00:00Z', signatureValid: true, encryptionValid: true, type: '投标文件', signed: true },
-  { id: 'doc-005', projectId: 'proj-003', fileName: '医疗设备采购投标文件-迈瑞医疗.pdf', fileType: 'pdf', fileSize: 6291456, uploadTime: '2026-06-04T11:00:00Z', signatureValid: false, encryptionValid: true, type: '投标文件', signed: false },
   { id: 'doc-006', projectId: 'proj-003', fileName: '医疗设备采购投标文件-东软集团.pdf', fileType: 'pdf', fileSize: 4194304, uploadTime: '2026-06-04T14:00:00Z', signatureValid: true, encryptionValid: true, type: '投标文件', signed: true },
   { id: 'doc-007', projectId: 'proj-004', fileName: '智慧校园设备投标文件-科大讯飞.docx', fileType: 'docx', fileSize: 4194304, uploadTime: '2026-06-11T09:30:00Z', signatureValid: true, encryptionValid: true, type: '投标文件', signed: true },
   { id: 'doc-008', projectId: 'proj-004', fileName: '智慧校园设备投标文件-大华技术.pdf', fileType: 'pdf', fileSize: 3145728, uploadTime: '2026-06-11T11:00:00Z', signatureValid: true, encryptionValid: true, type: '投标文件', signed: false },
@@ -223,5 +222,10 @@ export const mockDocuments: BiddingDocument[] = [
   { id: 'doc-012', projectId: 'proj-006', fileName: '政务系统运维投标文件-浪潮软件.pdf', fileType: 'pdf', fileSize: 786432, uploadTime: '2026-06-12T10:00:00Z', signatureValid: true, encryptionValid: true, type: '投标文件', signed: true },
   { id: 'doc-013', projectId: 'proj-008', fileName: '市政道路改造投标文件-中建三局.pdf', fileType: 'pdf', fileSize: 7340032, uploadTime: '2026-06-07T13:00:00Z', signatureValid: true, encryptionValid: true, type: '投标文件', signed: true },
   { id: 'doc-014', projectId: 'proj-008', fileName: '市政道路改造投标文件-迈瑞医疗.pdf', fileType: 'pdf', fileSize: 5242880, uploadTime: '2026-06-07T15:00:00Z', signatureValid: true, encryptionValid: true, type: '投标文件', signed: true },
-  { id: 'doc-015', projectId: 'proj-007', fileName: '办公设备询价文件.xlsx', fileType: 'xlsx', fileSize: 358400, uploadTime: '2026-06-01T08:00:00Z', signatureValid: false, encryptionValid: false, type: '投标文件', signed: false },
+];
+
+export const mockFailedDocuments: FailedDocument[] = [
+  { id: 'fail-001', projectId: 'proj-002', fileName: '综合楼建设项目投标文件-中建三局.pdf', fileType: 'pdf', fileSize: 8388608, uploadTime: '2026-06-08T16:00:00Z', type: '投标文件', failedStep: 'encryption', failedReason: '文件加密完整性验证不通过，文件可能已被篡改' },
+  { id: 'fail-002', projectId: 'proj-003', fileName: '医疗设备采购投标文件-迈瑞医疗.pdf', fileType: 'pdf', fileSize: 6291456, uploadTime: '2026-06-04T11:00:00Z', type: '投标文件', failedStep: 'signature', failedReason: '文件数字签名无效或已损坏，请确认文件来源合法' },
+  { id: 'fail-003', projectId: 'proj-007', fileName: '办公设备询价文件.xlsx', fileType: 'xlsx', fileSize: 358400, uploadTime: '2026-06-01T08:00:00Z', type: '投标文件', failedStep: 'signature', failedReason: '文件数字签名无效且加密校验失败，文件不可信' },
 ];

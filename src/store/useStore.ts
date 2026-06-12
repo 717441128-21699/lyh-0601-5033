@@ -16,6 +16,7 @@ import {
   mockEvaluationRooms,
   mockExtractionRecords,
   mockDocuments,
+  mockFailedDocuments,
   mockEnterprises,
 } from '../data/mockData';
 
@@ -110,7 +111,7 @@ export const useStore = create<AppState>()(
       evaluationRooms: mockEvaluationRooms,
       extractionRecords: mockExtractionRecords,
       documents: mockDocuments,
-      failedDocuments: [],
+      failedDocuments: mockFailedDocuments,
       enterprises: mockEnterprises,
       notifications: [],
       sidebarCollapsed: false,
